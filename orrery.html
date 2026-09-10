@@ -1306,20 +1306,6 @@ function eclipseTypeAt(date, sunLon) {
   return null;
 }
 
-// Continuous 0..1 closeness to eclipseTypeAt's own 'lunar' condition --
-// same two thresholds (12deg node distance, 0.06 phase distance from
-// exact full), just turned into a falloff instead of a hard boolean, so
-// the eclipse badge below can fade in as the real eclipse geometry is
-// approached rather than popping in and out.
-function lunarEclipseIntensity(date, sunLon) {
-  const node = moonNodeLongitude(date);
-  const dist = Math.min(angleSeparation(sunLon, node), angleSeparation(sunLon, node + 180));
-  const phase = moonPhaseAt(date);
-  const distFrac = Math.max(0, 1 - dist / 12);
-  const phaseFrac = Math.max(0, 1 - Math.abs(phase - 0.5) / 0.06);
-  return distFrac * phaseFrac;
-}
-
 // Steps forward through upcoming new-or-full moons (the only dates an
 // eclipse can fall on) checking the node-distance condition at each,
 // capped at ~5 years out so a long eclipse-free stretch can't hang the
@@ -4133,19 +4119,18 @@ function render() {
   drawSunPositionRing(ctx, moonPos.x, moonPos.y, moonR, sunGeoLon, JD, currentDate, th);
   drawDayDateDial(ctx, CX, CY, weekday, dateStr, currentDate.getFullYear(), th);
 
-  if (eclipseType === 'solar') {
+  if (eclipseType) {
     ctx.save();
     ctx.translate(moonPos.x, moonPos.y);
     ctx.beginPath();
     ctx.arc(0, 0, moonR + 11, 0, 2 * Math.PI);
-    ctx.strokeStyle = '#c46a3a';
+    ctx.strokeStyle = eclipseType === 'solar' ? '#c46a3a' : '#8a5fd1';
     ctx.lineWidth = 2.5;
     ctx.shadowColor = ctx.strokeStyle;
     ctx.shadowBlur = 14;
     ctx.stroke();
     ctx.restore();
   }
-  drawMoonPhaseMark(ctx, moonPos.x, moonPos.y, moonR, moonPhase, lunarEclipseIntensity(currentDate, sunGeoLon), th);
 
   const weekdayTitle = weekday[0] + weekday.slice(1).toLowerCase();
   const monthTitle = MONTH_ABBR[currentDate.getMonth()][0] + MONTH_ABBR[currentDate.getMonth()].slice(1).toLowerCase();
@@ -4378,34 +4363,6 @@ function drawMoonPhase(c, cx, cy, r, phase, signIndex, th) {
   c.fill();
 
   drawComplicationBezel(c, r, th);
-  c.restore();
-}
-
-// A small marker riding a ring just outside the Moon Phase bezel, at the
-// angle its own phase maps to (new moon at top, sweeping clockwise to full
-// moon at the bottom, back around to new) -- always visible and always
-// moving, the same "glyph rides the ring, always showing exactly where the
-// real thing is" idiom drawSunPositionRing's own sun glyph uses just above.
-// Since an eclipse can only happen at full moon, this reliably parks at the
-// bottom exactly when it matters. Its color lerps from the dial's own
-// brass/steel metal tone toward rust-copper by lunarEclipseIntensity, so a
-// real eclipse reads as this same marker reddening in place rather than a
-// separate indicator appearing.
-function drawMoonPhaseMark(c, cx, cy, moonR, phase, intensity, th) {
-  const ringR = moonR + 11;
-  const mathAngle = deg2rad(90 - phase * 360);
-  const x = Math.cos(mathAngle) * ringR, y = -Math.sin(mathAngle) * ringR;
-  const color = lerpColor(th.metalBright, '#a13a24', intensity);
-
-  c.save();
-  c.translate(cx, cy);
-  if (intensity > 0.05) {
-    c.shadowColor = color;
-    c.shadowBlur = 10 * intensity;
-  }
-  c.beginPath(); c.arc(x, y, 3.6, 0, 2 * Math.PI);
-  c.fillStyle = color; c.fill();
-  c.strokeStyle = th.metalDeepest; c.lineWidth = 1; c.stroke();
   c.restore();
 }
 
