@@ -4145,7 +4145,7 @@ function render() {
     ctx.stroke();
     ctx.restore();
   }
-  drawEclipseBadge(ctx, moonPos.x, moonPos.y, moonR, lunarEclipseIntensity(currentDate, sunGeoLon), th);
+  drawMoonPhaseMark(ctx, moonPos.x, moonPos.y, moonR, moonPhase, lunarEclipseIntensity(currentDate, sunGeoLon), th);
 
   const weekdayTitle = weekday[0] + weekday.slice(1).toLowerCase();
   const monthTitle = MONTH_ABBR[currentDate.getMonth()][0] + MONTH_ABBR[currentDate.getMonth()].slice(1).toLowerCase();
@@ -4381,24 +4381,31 @@ function drawMoonPhase(c, cx, cy, r, phase, signIndex, th) {
   c.restore();
 }
 
-// A small engraved seal mounted just below the Moon Phase bezel: half
-// cream, half rust-copper, standing in for a lunar eclipse the way a real
-// watch's own complication seals mark a feature rather than lighting one
-// up. Faded by intensity (see lunarEclipseIntensity) rather than a hard
-// on/off, so it eases in as the real eclipse geometry is approached.
-function drawEclipseBadge(c, cx, cy, moonR, intensity, th) {
-  if (intensity <= 0.01) return;
+// A small marker riding a ring just outside the Moon Phase bezel, at the
+// angle its own phase maps to (new moon at top, sweeping clockwise to full
+// moon at the bottom, back around to new) -- always visible and always
+// moving, the same "glyph rides the ring, always showing exactly where the
+// real thing is" idiom drawSunPositionRing's own sun glyph uses just above.
+// Since an eclipse can only happen at full moon, this reliably parks at the
+// bottom exactly when it matters. Its color lerps from the dial's own
+// brass/steel metal tone toward rust-copper by lunarEclipseIntensity, so a
+// real eclipse reads as this same marker reddening in place rather than a
+// separate indicator appearing.
+function drawMoonPhaseMark(c, cx, cy, moonR, phase, intensity, th) {
+  const ringR = moonR + 11;
+  const mathAngle = deg2rad(90 - phase * 360);
+  const x = Math.cos(mathAngle) * ringR, y = -Math.sin(mathAngle) * ringR;
+  const color = lerpColor(th.metalBright, '#a13a24', intensity);
+
   c.save();
-  c.globalAlpha = Math.min(1, intensity);
   c.translate(cx, cy);
-  const by = moonR + 18;
-  c.beginPath(); c.arc(0, by, 8, 0, 2 * Math.PI);
-  c.fillStyle = th.subdialFace; c.fill();
-  c.strokeStyle = th.metalMid; c.lineWidth = 1; c.stroke();
-  c.beginPath(); c.arc(-1.6, by, 4, 0, 2 * Math.PI);
-  c.fillStyle = '#ece2c4'; c.fill();
-  c.beginPath(); c.arc(1.8, by, 4, 0, 2 * Math.PI);
-  c.fillStyle = '#a13a24'; c.fill();
+  if (intensity > 0.05) {
+    c.shadowColor = color;
+    c.shadowBlur = 10 * intensity;
+  }
+  c.beginPath(); c.arc(x, y, 3.6, 0, 2 * Math.PI);
+  c.fillStyle = color; c.fill();
+  c.strokeStyle = th.metalDeepest; c.lineWidth = 1; c.stroke();
   c.restore();
 }
 
