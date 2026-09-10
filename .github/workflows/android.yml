@@ -34,6 +34,7 @@ jobs:
 
       - name: Sync web app source into www/
         run: |
+          mkdir -p www/icons
           cp orrery.html www/index.html
           cp manifest.json www/manifest.json
           cp sw.js www/sw.js
