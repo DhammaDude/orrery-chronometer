@@ -464,6 +464,7 @@
             <label><input type="checkbox" id="alarm-solar-eclipse" /> Solar eclipse</label>
             <label><input type="checkbox" id="alarm-lunar-eclipse" /> Lunar eclipse</label>
             <label><input type="checkbox" id="alarm-galilean-conjunction" /> Galilean moon conjunction</label>
+            <label><input type="checkbox" id="alarm-mars-approach" /> Mars closest approach to Earth</label>
           </div>
           <div id="alarm-hint">Chimes a bell three times at local midday, the day before each event -- leave this tab open to be alerted. Needs your location.</div>
         </div>
@@ -511,6 +512,7 @@
           </div>
           <div class="row" style="margin-top:6px">
             <button class="ctl" id="jump-ring-crossing-btn">Next Ring Plane Crossing</button>
+            <button class="ctl" id="jump-mars-approach-btn">Next Mars Approach</button>
           </div>
         </div>
         <div>
@@ -2707,6 +2709,61 @@ jumpRingCrossingBtn.addEventListener('click', () => {
   const nextMs = nextSaturnRingCrossing(currentDate);
   if (nextMs !== null) setDate(new Date(nextMs));
   else almanacLine.textContent = "Couldn't find a Saturn ring-plane crossing in the next ~20 years.";
+});
+
+const jumpMarsApproachBtn = document.getElementById('jump-mars-approach-btn');
+
+function marsEarthDistanceAt(ms) {
+  const T = (toJulianDate(new Date(ms)) - 2451545.0) / 36525;
+  const mars = heliocentric(PLANETS.find(p => p.name === 'Mars'), T);
+  const earth = heliocentric(PLANETS.find(p => p.name === 'Earth'), T);
+  return Math.sqrt((mars.x - earth.x) ** 2 + (mars.y - earth.y) ** 2 + (mars.z - earth.z) ** 2);
+}
+
+// Golden-section search for the minimum of a unimodal f over [lo, hi] --
+// the right tool for narrowing an extremum (unlike the sign-change bisection
+// above, which finds a root/crossing instead).
+function goldenSectionMin(f, lo, hi) {
+  const gr = (Math.sqrt(5) - 1) / 2;
+  let a = lo, b = hi;
+  let c = b - gr * (b - a), d = a + gr * (b - a);
+  let fc = f(c), fd = f(d);
+  for (let i = 0; i < 40; i++) {
+    if (fc < fd) {
+      b = d; d = c; fd = fc;
+      c = b - gr * (b - a); fc = f(c);
+    } else {
+      a = c; c = d; fc = fd;
+      d = a + gr * (b - a); fd = f(d);
+    }
+  }
+  return (a + b) / 2;
+}
+
+// Mars-Earth closest approach recurs roughly every synodic period (~780
+// days, ~2.14 years), so a coarse fixed-step scan across a 3-year horizon
+// is guaranteed to bracket the next one: three consecutive samples where
+// the middle one is lower than both its neighbors. That bracket is then
+// narrowed to sub-day precision with the golden-section search above.
+function nextMarsClosestApproach(fromDate) {
+  const stepMs = 5 * 86400000;
+  const maxSteps = Math.ceil((3 * 365.25 * 86400000) / stepMs);
+  let t0 = fromDate.getTime(), d0 = marsEarthDistanceAt(t0);
+  let t1 = t0 + stepMs, d1 = marsEarthDistanceAt(t1);
+  for (let i = 2; i <= maxSteps; i++) {
+    const t2 = fromDate.getTime() + i * stepMs;
+    const d2 = marsEarthDistanceAt(t2);
+    if (d1 <= d0 && d1 <= d2) return goldenSectionMin(marsEarthDistanceAt, t0, t2);
+    t0 = t1; d0 = d1;
+    t1 = t2; d1 = d2;
+  }
+  return null;
+}
+
+jumpMarsApproachBtn.addEventListener('click', () => {
+  const nextMs = nextMarsClosestApproach(currentDate);
+  if (nextMs !== null) setDate(new Date(nextMs));
+  else almanacLine.textContent = "Couldn't find a Mars closest approach in the next ~3 years.";
 });
 
 // Calendar fields (day-of-year, the date picker, weekday/date readouts) use
@@ -5176,9 +5233,10 @@ const ALARM_DEFS = [
   { key: 'solarEclipse', label: 'A solar eclipse is coming', emoji: '☉' },
   { key: 'lunarEclipse', label: 'A lunar eclipse is coming', emoji: '☾' },
   { key: 'galileanConjunction', label: 'Two Galilean moons will be in conjunction', emoji: '✦' },
+  { key: 'marsApproach', label: 'Mars is nearing its closest approach to Earth', emoji: '♂' },
 ];
 
-let alarms = { jupiter: false, saturn: false, solarEclipse: false, lunarEclipse: false, galileanConjunction: false };
+let alarms = { jupiter: false, saturn: false, solarEclipse: false, lunarEclipse: false, galileanConjunction: false, marsApproach: false };
 try { alarms = Object.assign(alarms, JSON.parse(localStorage.getItem('antikythera-alarms') || '{}')); } catch (e) { /* keep defaults */ }
 
 const alarmCheckboxes = {
@@ -5187,6 +5245,7 @@ const alarmCheckboxes = {
   solarEclipse: document.getElementById('alarm-solar-eclipse'),
   lunarEclipse: document.getElementById('alarm-lunar-eclipse'),
   galileanConjunction: document.getElementById('alarm-galilean-conjunction'),
+  marsApproach: document.getElementById('alarm-mars-approach'),
 };
 Object.keys(alarmCheckboxes).forEach(key => { alarmCheckboxes[key].checked = !!alarms[key]; });
 
@@ -5339,6 +5398,9 @@ function searchNextEventStart(key, fromDate) {
   if (key === 'solarEclipse' || key === 'lunarEclipse') {
     const result = findNextEclipse(fromDate, sunLonAtDate, key === 'solarEclipse' ? 'solar' : 'lunar');
     return result ? result.date.getTime() : null;
+  }
+  if (key === 'marsApproach') {
+    return nextMarsClosestApproach(fromDate);
   }
   if (key === 'galileanConjunction') {
     const stepMs = 10 * 60000;
