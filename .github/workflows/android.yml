@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
     paths:
+      - 'orrery.html'
+      - 'manifest.json'
+      - 'sw.js'
+      - 'icons/**'
       - 'www/**'
       - 'android/**'
       - 'capacitor.config.json'
