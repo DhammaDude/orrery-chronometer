@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Orrery Chronometer</string>
+    <string name="title_activity_main">Orrery Chronometer</string>
+    <string name="package_name">com.wjc.orrery</string>
+    <string name="custom_url_scheme">com.wjc.orrery</string>
+</resources>
