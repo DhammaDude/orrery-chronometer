@@ -3302,6 +3302,48 @@ function drawGalileanMiniOrbits(c, cx, cy, jupiterPos, JD, th) {
   c.restore();
 }
 
+// Same bird's-eye treatment as the Galilean-moon inset above, but for
+// Earth's own Moon, which otherwise never appears on the main dial at all
+// (only as the separate phase-disc complication). Reuses the real ELP2000/82
+// geocentric ecliptic longitude (moonEclipticPosition) that already drives
+// Sky View's Moon dot, rather than a synthetic angle -- so unlike the
+// Galilean moons' idealized clock, this one is a real sky direction.
+//
+// A single fixed radius is enough for one moon (no need for the Galilean
+// inset's per-moon spread): it's kept clear of Earth's own dot (8px) on the
+// inside and well inside the tighter of Earth's two neighboring gaps --
+// Venus's orbit ring sits ~20.6px in, Mars's ~22.3px out, at this dial's
+// scaleR -- on the outside, so it never crosses into a neighboring planet's
+// orbit line regardless of Earth's current position.
+const MOON_MINI_ORBIT_R = 14;
+function drawMoonMiniOrbit(c, cx, cy, earthPos, JD, th) {
+  const rr = orbitR('Earth', scaleR(earthPos.r));
+  const lon = earthPos.lon;
+  const ex = Math.cos(deg2rad(lon)) * rr, ey = -Math.sin(deg2rad(lon)) * rr;
+
+  const T = (JD - 2451545.0) / 36525;
+  const moonLon = moonEclipticPosition(T).lonDeg;
+
+  c.save();
+  c.translate(cx + ex, cy + ey);
+
+  c.beginPath(); c.arc(0, 0, MOON_MINI_ORBIT_R, 0, 2 * Math.PI);
+  c.strokeStyle = th.orbitRing;
+  c.lineWidth = 0.6;
+  c.stroke();
+
+  const angle = deg2rad(moonLon);
+  const x = Math.cos(angle) * MOON_MINI_ORBIT_R, y = -Math.sin(angle) * MOON_MINI_ORBIT_R;
+  c.beginPath(); c.arc(x, y, 1.6, 0, 2 * Math.PI);
+  c.fillStyle = '#e7ddc0'; // same pale cream as the Moon's Sky View dot
+  c.fill();
+  c.strokeStyle = th.metalDeepest;
+  c.lineWidth = 0.5;
+  c.stroke();
+
+  c.restore();
+}
+
 // Replaces the heliocentric orbit-rings/sun/planets content with what's
 // actually visible from the observer's location right now: the brightest
 // stars and the planets, converted through geocentric-equatorial and then
@@ -4012,6 +4054,7 @@ function render() {
   ctx.restore();
 
   drawGalileanMiniOrbits(ctx, CX, CY, positions['Jupiter'], JD, th);
+  drawMoonMiniOrbit(ctx, CX, CY, positions['Earth'], JD, th);
   ctx.restore();
   }
 
