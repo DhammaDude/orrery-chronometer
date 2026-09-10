@@ -1306,6 +1306,20 @@ function eclipseTypeAt(date, sunLon) {
   return null;
 }
 
+// Continuous 0..1 closeness to eclipseTypeAt's own 'lunar' condition --
+// same two thresholds (12deg node distance, 0.06 phase distance from
+// exact full), just turned into a falloff instead of a hard boolean, so
+// the eclipse badge below can fade in as the real eclipse geometry is
+// approached rather than popping in and out.
+function lunarEclipseIntensity(date, sunLon) {
+  const node = moonNodeLongitude(date);
+  const dist = Math.min(angleSeparation(sunLon, node), angleSeparation(sunLon, node + 180));
+  const phase = moonPhaseAt(date);
+  const distFrac = Math.max(0, 1 - dist / 12);
+  const phaseFrac = Math.max(0, 1 - Math.abs(phase - 0.5) / 0.06);
+  return distFrac * phaseFrac;
+}
+
 // Steps forward through upcoming new-or-full moons (the only dates an
 // eclipse can fall on) checking the node-distance condition at each,
 // capped at ~5 years out so a long eclipse-free stretch can't hang the
@@ -4119,18 +4133,19 @@ function render() {
   drawSunPositionRing(ctx, moonPos.x, moonPos.y, moonR, sunGeoLon, JD, currentDate, th);
   drawDayDateDial(ctx, CX, CY, weekday, dateStr, currentDate.getFullYear(), th);
 
-  if (eclipseType) {
+  if (eclipseType === 'solar') {
     ctx.save();
     ctx.translate(moonPos.x, moonPos.y);
     ctx.beginPath();
     ctx.arc(0, 0, moonR + 11, 0, 2 * Math.PI);
-    ctx.strokeStyle = eclipseType === 'solar' ? '#c46a3a' : '#8a5fd1';
+    ctx.strokeStyle = '#c46a3a';
     ctx.lineWidth = 2.5;
     ctx.shadowColor = ctx.strokeStyle;
     ctx.shadowBlur = 14;
     ctx.stroke();
     ctx.restore();
   }
+  drawEclipseBadge(ctx, moonPos.x, moonPos.y, moonR, lunarEclipseIntensity(currentDate, sunGeoLon), th);
 
   const weekdayTitle = weekday[0] + weekday.slice(1).toLowerCase();
   const monthTitle = MONTH_ABBR[currentDate.getMonth()][0] + MONTH_ABBR[currentDate.getMonth()].slice(1).toLowerCase();
@@ -4363,6 +4378,27 @@ function drawMoonPhase(c, cx, cy, r, phase, signIndex, th) {
   c.fill();
 
   drawComplicationBezel(c, r, th);
+  c.restore();
+}
+
+// A small engraved seal mounted just below the Moon Phase bezel: half
+// cream, half rust-copper, standing in for a lunar eclipse the way a real
+// watch's own complication seals mark a feature rather than lighting one
+// up. Faded by intensity (see lunarEclipseIntensity) rather than a hard
+// on/off, so it eases in as the real eclipse geometry is approached.
+function drawEclipseBadge(c, cx, cy, moonR, intensity, th) {
+  if (intensity <= 0.01) return;
+  c.save();
+  c.globalAlpha = Math.min(1, intensity);
+  c.translate(cx, cy);
+  const by = moonR + 18;
+  c.beginPath(); c.arc(0, by, 8, 0, 2 * Math.PI);
+  c.fillStyle = th.subdialFace; c.fill();
+  c.strokeStyle = th.metalMid; c.lineWidth = 1; c.stroke();
+  c.beginPath(); c.arc(-1.6, by, 4, 0, 2 * Math.PI);
+  c.fillStyle = '#ece2c4'; c.fill();
+  c.beginPath(); c.arc(1.8, by, 4, 0, 2 * Math.PI);
+  c.fillStyle = '#a13a24'; c.fill();
   c.restore();
 }
 
