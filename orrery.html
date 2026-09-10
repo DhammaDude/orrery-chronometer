@@ -5055,18 +5055,50 @@ let compassGotTrueHeading = false; // specifically a real compass-referenced (no
 let compassNoDataTimer = null;
 let compassAnyEventSeen = false;
 
+// Tilt-compensated heading from the raw alpha/beta/gamma Euler angles.
+// Naively using alpha alone (360 - alpha) assumes the phone is lying flat;
+// held upright (screen toward you, the natural way to glance at this
+// indicator) that reading becomes numerically unstable -- alpha is measured
+// around the device's own Z axis, which only lines up with true vertical
+// when the phone is flat, so a small real turn gets amplified into a big,
+// spinning-looking swing as the phone tilts toward vertical.
+//
+// Instead this projects two different device-fixed reference vectors into
+// the horizontal world plane -- the "top of the phone" direction (accurate
+// when flat, degenerates to zero as the phone approaches vertical) and the
+// "facing" direction the screen points away from, i.e. out through the back
+// (accurate held upright, degenerates to zero when flat) -- and at each
+// reading just uses whichever of the two currently has the larger
+// horizontal component. That keeps the reading numerically stable across
+// the whole range of realistic holds, from flat-on-a-table to upright in
+// hand, rather than being reliable only at one extreme.
+function tiltCompensatedHeading(alpha, beta, gamma) {
+  const d = Math.PI / 180;
+  const a = alpha * d, b = beta * d, g = gamma * d;
+  const ca = Math.cos(a), sa = Math.sin(a);
+  const cb = Math.cos(b), sb = Math.sin(b);
+  const cg = Math.cos(g), sg = Math.sin(g);
+
+  const topEast = -sa * cb, topNorth = ca * cb;
+  const topMagSq = topEast * topEast + topNorth * topNorth;
+
+  const fwdEast = -(ca * sg + sa * sb * cg), fwdNorth = -(sa * sg - ca * sb * cg);
+  const fwdMagSq = fwdEast * fwdEast + fwdNorth * fwdNorth;
+
+  const east = topMagSq >= fwdMagSq ? topEast : fwdEast;
+  const north = topMagSq >= fwdMagSq ? topNorth : fwdNorth;
+  let heading = Math.atan2(east, north) / d;
+  if (heading < 0) heading += 360;
+  return heading;
+}
+
 function onDeviceOrientation(e) {
   let heading, isTrueHeading;
   if (typeof e.webkitCompassHeading === 'number') {
     heading = e.webkitCompassHeading; isTrueHeading = true; // iOS Safari: already a compass heading, clockwise from true north
-  } else if (e.absolute === true && e.alpha !== null) {
-    heading = 360 - e.alpha; isTrueHeading = true; // Android absolute orientation: alpha increases counterclockwise from true/magnetic north
-  } else if (e.alpha !== null) {
-    // Relative-only orientation -- no compass fix, so this drifts with the
-    // device's own start position rather than pointing at real north. Only
-    // used as a last resort (see below), and flagged as such rather than
-    // silently passed off as a real heading.
-    heading = 360 - e.alpha; isTrueHeading = false;
+  } else if (e.alpha !== null && e.beta !== null && e.gamma !== null) {
+    heading = tiltCompensatedHeading(e.alpha, e.beta, e.gamma);
+    isTrueHeading = e.absolute === true; // Android absolute orientation is compass-referenced; relative-only just drifts from wherever the app started
   } else {
     return;
   }
