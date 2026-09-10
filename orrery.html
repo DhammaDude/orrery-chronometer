@@ -732,17 +732,10 @@ const GALILEAN_MOONS = [
 function galileanCycles(moon, JD) {
   return (JD - 2451545.0) / moon.period + moon.phase0;
 }
-// Lateral (visible, side-to-side) displacement -- the sine half of the
-// edge-on circular orbit.
-function galileanOffset(moon, JD) {
-  return Math.sin(galileanCycles(moon, JD) * 2 * Math.PI);
-}
-// The cosine half of that same orbit is depth: how far toward (positive)
-// or away from (negative) the observer the moon currently is, relative to
-// Jupiter's own center. Behind (negative) AND close enough to the lateral
-// center to fall within Jupiter's disk is when the moon should actually
-// disappear behind the planet, the way a real transit/occultation looks,
-// rather than just becoming a static side-to-side wobble that never hides.
+// Depth: how far toward (positive) or away from (negative) the observer a
+// moon currently is along its orbit, relative to Jupiter's own center --
+// used by the zoomed Jovian view to hide a moon behind Jupiter's disk
+// during a real transit/occultation.
 function galileanDepth(moon, JD) {
   return Math.cos(galileanCycles(moon, JD) * 2 * Math.PI);
 }
@@ -3246,44 +3239,49 @@ function drawArcText(c, cx, cy, radius, text, centerAngleDeg, spreadDeg, color, 
   c.restore();
 }
 
-// The Galilean-moon complication: four small dots wobbling around Jupiter's
-// own orbit ring, anchored to wherever Jupiter currently sits, rather than
-// living on the shield. Uses this dial's own astronomical convention
-// (x=cos(lon)*r, y=-sin(lon)*r) throughout, matching how Jupiter itself is
-// drawn -- so the dots stay locked to Jupiter's real screen position as
-// the simulation date changes, instead of a fixed spot on the case.
-function drawGalileanStrip(c, cx, cy, jupiterPos, JD, th) {
+// The Galilean-moon complication: four small dots in real top-down circular
+// orbits around Jupiter's own marker, anchored to wherever Jupiter currently
+// sits (rather than living on the shield), using this dial's own
+// astronomical convention (x=cos(lon)*r, y=-sin(lon)*r) for that anchor so
+// the moons stay locked to Jupiter's real screen position as the simulation
+// date changes. Previously this drew the moons as an edge-on wobble (the way
+// Galileo's own telescope actually saw them); now each moon gets its own
+// true circular orbit (real angle from moonAngleDeg, the same one the
+// zoomed drawJovianView popup uses) seen from directly above.
+//
+// GALILEAN_MINI_MIN_R/MAX_R box the whole inset between Jupiter's own dot
+// (17px radius) and its nearest neighboring orbit rings. At this dial's
+// current scaleR, Jupiter's orbit ring sits ~131px out with Mars ~98px and
+// Saturn ~166px, leaving ~33px of clearance on the tighter (Mars) side
+// regardless of Jupiter's longitude (since neighboring orbits are full
+// circles) -- MAX_R is kept well inside that so the inset never crosses
+// into a neighboring planet's orbit line.
+const GALILEAN_MINI_MIN_R = 20;
+const GALILEAN_MINI_MAX_R = 28;
+function galileanMiniOrbitR(m) {
+  const maxDist = GALILEAN_MOONS[GALILEAN_MOONS.length - 1].distR;
+  return GALILEAN_MINI_MIN_R + (GALILEAN_MINI_MAX_R - GALILEAN_MINI_MIN_R) * (m.distR / maxDist);
+}
+
+function drawGalileanMiniOrbits(c, cx, cy, jupiterPos, JD, th) {
   const rr = scaleR(jupiterPos.r);
   const lon = jupiterPos.lon;
-  const span = 46; // degrees of ecliptic longitude the moons' wobble covers
-  const jupiterR = PLANETS.find(p => p.name === 'Jupiter').dotR;
   const jx = Math.cos(deg2rad(lon)) * rr, jy = -Math.sin(deg2rad(lon)) * rr;
 
   c.save();
-  c.translate(cx, cy);
+  c.translate(cx + jx, cy + jy);
 
-  const maxDist = GALILEAN_MOONS[GALILEAN_MOONS.length - 1].distR;
+  GALILEAN_MOONS.forEach(m => {
+    c.beginPath(); c.arc(0, 0, galileanMiniOrbitR(m), 0, 2 * Math.PI);
+    c.strokeStyle = th.orbitRing;
+    c.lineWidth = 0.6;
+    c.stroke();
+  });
+
   GALILEAN_MOONS.forEach((m, idx) => {
-    // sqrt rather than the real linear distance ratio -- linear compressed
-    // the three inner moons into a tight clump right at Jupiter's own
-    // marker (Io's full swing was under 6px, barely wider than its own
-    // dot), even though they were technically never overlapping. sqrt
-    // keeps the correct relative order (Io swings least, Callisto most)
-    // while giving the inner moons enough room to read as separate.
-    const ampFrac = Math.sqrt(m.distR / maxDist);
-    const off = galileanOffset(m, JD) * ampFrac * (span / 2) * 0.85;
-    const a = deg2rad(lon + off);
-    const x = Math.cos(a) * rr, y = -Math.sin(a) * rr;
-
-    // The edge-on circular orbit's other half (cosine, rather than the
-    // sine used for the visible wobble) is depth -- how far toward/away
-    // from the observer the moon sits relative to Jupiter's own center.
-    // Behind (negative) and close enough on screen to fall within
-    // Jupiter's own disk is a transit/occultation: the moon should
-    // actually vanish behind the planet rather than just wobble past it.
-    const depth = galileanDepth(m, JD);
-    const distFromJupiter = Math.hypot(x - jx, y - jy);
-    if (depth < 0 && distFromJupiter < jupiterR) return;
+    const r = galileanMiniOrbitR(m);
+    const angle = deg2rad(moonAngleDeg(m, JD));
+    const x = Math.cos(angle) * r, y = -Math.sin(angle) * r;
 
     c.beginPath(); c.arc(x, y, m.dotR, 0, 2 * Math.PI);
     c.fillStyle = m.color; c.fill();
@@ -3556,13 +3554,12 @@ function drawEarthDirectionPointer(c, planetPos, earthPos, outerR, th) {
   c.restore();
 }
 
-// A miniature top-down orrery of its own, centered on Jupiter: real orbital
-// angle (galileanCycles*360, the same angle moonAngleDeg already uses)
-// rather than the edge-on wobble drawGalileanStrip draws along
-// Jupiter's own orbit line -- there's room here to actually spread the
-// moons around a circle instead of compressing them into a sideways strip.
-// Drawn under a translate+scale so the caller can morph it in from wherever
-// Jupiter's dot sits on the ordinary dial up to a full centered view.
+// A miniature top-down orrery of its own, centered on Jupiter, zoomed to
+// fill the whole dial -- the same real orbital angle (moonAngleDeg) and
+// top-down convention as the always-on drawGalileanMiniOrbits inset above,
+// just with far more room to spread the moons out. Drawn under a
+// translate+scale so the caller can morph it in from wherever Jupiter's dot
+// sits on the ordinary dial up to a full centered view.
 const JOVIAN_ORBIT_R = { Io: 70, Europa: 112, Ganymede: 158, Callisto: 218 };
 function drawJovianView(c, originX, originY, scale, alpha, JD, positions, th) {
   c.save();
@@ -4014,7 +4011,7 @@ function render() {
   });
   ctx.restore();
 
-  drawGalileanStrip(ctx, CX, CY, positions['Jupiter'], JD, th);
+  drawGalileanMiniOrbits(ctx, CX, CY, positions['Jupiter'], JD, th);
   ctx.restore();
   }
 
