@@ -5087,7 +5087,11 @@ function tiltCompensatedHeading(alpha, beta, gamma) {
 
   const east = topMagSq >= fwdMagSq ? topEast : fwdEast;
   const north = topMagSq >= fwdMagSq ? topNorth : fwdNorth;
-  let heading = Math.atan2(east, north) / d;
+  // East is negated here: Chrome on Android reports deviceorientation's
+  // alpha with the opposite rotational sense from what the spec's own
+  // "counterclockwise as viewed from above" wording implies, which mirrors
+  // every heading this produces east-for-west unless corrected here.
+  let heading = Math.atan2(-east, north) / d;
   if (heading < 0) heading += 360;
   return heading;
 }
