@@ -32,14 +32,32 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sync web app source into www/
+        run: |
+          cp orrery.html www/index.html
+          cp manifest.json www/manifest.json
+          cp sw.js www/sw.js
+          cp icons/*.png www/icons/
+
       - name: Sync Capacitor
         run: npx cap sync android
 
       - name: Grant execute permission for gradlew
         run: chmod +x android/gradlew
 
+      - name: Ensure shared debug keystore exists
+        run: |
+          if [ ! -f android/app/debug.keystore ]; then
+            keytool -genkeypair -v -keystore android/app/debug.keystore \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10950 \
+              -dname "CN=Orrery Chronometer Debug,O=WJC & Co,C=US"
+          fi
+
       - name: Build debug APK
         working-directory: android
+        env:
+          APP_VERSION_CODE: ${{ github.run_number }}
         run: ./gradlew assembleDebug
 
       - name: Upload APK artifact
@@ -47,3 +65,9 @@ jobs:
         with:
           name: orrery-chronometer-debug-apk
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload debug keystore artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-keystore
+          path: android/app/debug.keystore

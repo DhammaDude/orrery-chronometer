@@ -1,5 +1,12 @@
 node_modules/
 
+# Generated at build time by .github/workflows/android.yml (synced from
+# the root orrery.html/manifest.json/sw.js/icons) -- not the source of truth.
+www/index.html
+www/manifest.json
+www/sw.js
+www/icons/
+
 # Android build outputs
 android/app/build/
 android/build/
